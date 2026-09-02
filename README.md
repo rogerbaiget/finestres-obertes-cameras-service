@@ -1,4 +1,4 @@
-# webcams-api
+# finestres-obertes-webcams-api
 
 A Cloudflare Worker that is the canonical source of the webcam list used by
 the [finestres-obertes](https://github.com/rogerbaiget/finestres-obertes) map
