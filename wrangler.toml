@@ -1,0 +1,10 @@
+name = "webcam-status" # the deployed Worker's name/URL — unchanged from before this repo split
+main = "index.js"
+compatibility_date = "2026-09-02"
+
+[triggers]
+crons = ["0 * * * *"] # hourly, on the hour
+
+[[kv_namespaces]]
+binding = "WEBCAM_STATUS"
+id = "03a923653b264767ad47b508f5f827d5"
