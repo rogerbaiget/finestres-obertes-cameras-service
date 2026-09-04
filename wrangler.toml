@@ -12,3 +12,8 @@ crons = ["0 * * * *"] # hourly, on the hour
 [[kv_namespaces]]
 binding = "CAMERA_STATUS"
 id = "03a923653b264767ad47b508f5f827d5"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "finestres-obertes-cameras"
+database_id = "5a8db34c-b401-47de-bc24-eae5b424d65a"
