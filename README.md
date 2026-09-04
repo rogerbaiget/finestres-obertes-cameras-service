@@ -1,4 +1,4 @@
-# finestres-obertes-cameras-api
+# finestres-obertes-cameras-service
 
 A Cloudflare Worker that is the canonical source of the camera list used by
 the [finestres-obertes](https://github.com/rogerbaiget/finestres-obertes) map
@@ -47,7 +47,7 @@ npx wrangler deploy
 ```
 
 Wrangler prints the Worker's URL, something like
-`https://finestres-obertes-cameras-api.<your-subdomain>.workers.dev` (the
+`https://finestres-obertes-cameras-service.<your-subdomain>.workers.dev` (the
 Worker's name comes from `wrangler.toml`'s `name` field, which matches this
 repo's name — renaming either one changes the URL every consumer fetches, so
 keep them in sync). Put that URL into `CAMERA_STATUS_URL` in the site repo's
@@ -60,7 +60,7 @@ deploy — nothing else to configure. To check it's running:
 npx wrangler tail          # watch live logs
 ```
 
-or check **Workers & Pages → finestres-obertes-cameras-api → Triggers** in
+or check **Workers & Pages → finestres-obertes-cameras-service → Triggers** in
 the Cloudflare dashboard for the last execution time.
 
 **The first check doesn't happen until the Cron Trigger fires** (up to an hour,
@@ -73,7 +73,7 @@ broken-detection sooner.
 ## Automatic deploys
 
 To have Cloudflare redeploy this Worker on every push, without any GitHub
-Actions or API tokens: **Workers & Pages → finestres-obertes-cameras-api →
+Actions or API tokens: **Workers & Pages → finestres-obertes-cameras-service →
 Settings → Builds → Connect**, then connect this repo. Leave **Root
 directory** unset (this repo's root *is* the Worker), set **Git branch** to
 whichever branch you want to treat as live (`main` is fine — this repo has no
@@ -106,13 +106,13 @@ worth chasing further given the alternative below works reliably). Use the
 Worker's own `/run` route instead:
 
 ```sh
-curl "https://finestres-obertes-cameras-api.<your-subdomain>.workers.dev/run?token=<your RUN_TOKEN>"
+curl "https://finestres-obertes-cameras-service.<your-subdomain>.workers.dev/run?token=<your RUN_TOKEN>"
 ```
 
 That runs the same check-and-store logic the cron uses, immediately. Then:
 
 ```sh
-curl https://finestres-obertes-cameras-api.<your-subdomain>.workers.dev
+curl https://finestres-obertes-cameras-service.<your-subdomain>.workers.dev
 ```
 
 `checkedAt` should now be a real timestamp, and `cams` the full list with

@@ -1,4 +1,4 @@
-name = "finestres-obertes-cameras-api" # matches this repo's name — the deployed Worker's URL follows from it
+name = "finestres-obertes-cameras-service" # matches this repo's name — the deployed Worker's URL follows from it
 main = "index.js"
 compatibility_date = "2026-09-02"
 # Needed so this Worker's fetch() checks can reach the erdrag.workers.dev cameras —
