@@ -1,4 +1,4 @@
-export const WEBCAMS = [
+export const CAMERAS = [
 // --- Real live video ---
 {n:"Barcelona — vista en directe",loc:"Barcelona",media:"video",lat:41.386,lng:2.196,src:"https://www.youtube.com/embed/zaJJNUhLtoU?autoplay=1&mute=1"},
 {n:"Café del Mar — posta de sol",loc:"Sant Antoni de Portmany, Eivissa",media:"video",lat:38.980,lng:1.303,src:"https://www.youtube.com/embed/gsCy64BCAk4?autoplay=1&mute=1"},

@@ -1,4 +1,4 @@
-name = "webcam-status" # the deployed Worker's name/URL — unchanged from before this repo split
+name = "finestres-obertes-cameras-api" # matches this repo's name — the deployed Worker's URL follows from it
 main = "index.js"
 compatibility_date = "2026-09-02"
 
@@ -6,5 +6,5 @@ compatibility_date = "2026-09-02"
 crons = ["0 * * * *"] # hourly, on the hour
 
 [[kv_namespaces]]
-binding = "WEBCAM_STATUS"
+binding = "CAMERA_STATUS"
 id = "03a923653b264767ad47b508f5f827d5"

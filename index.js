@@ -1,9 +1,9 @@
-// Cloudflare Worker: the canonical source of the webcam list, and its live
-// availability. Checks every webcam on an hourly Cron Trigger, caches the full
+// Cloudflare Worker: the canonical source of the camera list, and its live
+// availability. Checks every camera on an hourly Cron Trigger, caches the full
 // enriched list (each cam plus a `broken` flag) in Workers KV, and serves it to
-// whatever consumes it — currently the finestres-obertes map site's webcams layer
-// (js/layers/webcams/load.js in that separate repo), which fetches this Worker's
-// cached result on every page load rather than holding any webcam data itself.
+// whatever consumes it — currently the finestres-obertes map site's cameras layer
+// (js/layers/cameras/load.js in that separate repo), which fetches this Worker's
+// cached result on every page load rather than holding any camera data itself.
 //
 // Runs server-side specifically because most of the photo-hosting third parties
 // (3cat.cat, meteoalmoster.net, avametnuvol.es, oratge.es, vigilant.cat, ...) send no
@@ -15,7 +15,7 @@
 // Deploy from this directory: `wrangler deploy`. See README.md for one-time setup
 // (KV namespace, RUN_TOKEN secret, wrangler.toml binding) and how to trigger a check
 // on demand.
-import { WEBCAMS } from './webcams-data.js';
+import { CAMERAS } from './cameras-data.js';
 
 const KV_KEY = 'status';
 
@@ -51,10 +51,10 @@ async function checkVideo(cam){
   }catch(e){ return true; }
 }
 
-// Returns every cam from WEBCAMS, each with a `broken` flag added — this is the full
+// Returns every cam from CAMERAS, each with a `broken` flag added — this is the full
 // payload the client needs to draw markers, no separate "which cams exist" step.
 async function checkAllCams(){
-  return Promise.all(WEBCAMS.map(async cam => {
+  return Promise.all(CAMERAS.map(async cam => {
     const ok = cam.media === 'photo' ? await checkPhoto(cam) : await checkVideo(cam);
     return {...cam, broken: !ok};
   }));
@@ -62,7 +62,7 @@ async function checkAllCams(){
 
 async function runCheck(env){
   const cams = await checkAllCams();
-  await env.WEBCAM_STATUS.put(KV_KEY, JSON.stringify({cams, checkedAt: Date.now()}));
+  await env.CAMERA_STATUS.put(KV_KEY, JSON.stringify({cams, checkedAt: Date.now()}));
 }
 
 export default {
@@ -85,13 +85,13 @@ export default {
       return new Response('OK — check ran, see / for the result', {status: 200});
     }
 
-    const stored = await env.WEBCAM_STATUS.get(KV_KEY);
+    const stored = await env.CAMERA_STATUS.get(KV_KEY);
     // Before the first scheduled run ever completes, fall back to the raw list with
     // every cam marked fine, rather than an empty list — the site should show all the
     // cams from the moment it's deployed, not wait an hour for live broken-detection
     // to kick in.
     const body = stored || JSON.stringify({
-      cams: WEBCAMS.map(cam => ({...cam, broken: false})),
+      cams: CAMERAS.map(cam => ({...cam, broken: false})),
       checkedAt: null
     });
     return new Response(body, {

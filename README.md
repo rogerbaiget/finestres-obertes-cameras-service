@@ -1,14 +1,14 @@
-# finestres-obertes-webcams-api
+# finestres-obertes-cameras-api
 
-A Cloudflare Worker that is the canonical source of the webcam list used by
+A Cloudflare Worker that is the canonical source of the camera list used by
 the [finestres-obertes](https://github.com/rogerbaiget/finestres-obertes) map
-(`js/layers/webcams/load.js` in that repo). It holds every webcam's info
-(`webcams-data.js`), checks each one's live availability once an hour (Cron
+(`js/layers/cameras/load.js` in that repo). It holds every camera's info
+(`cameras-data.js`), checks each one's live availability once an hour (Cron
 Trigger), and serves the enriched list — each cam plus a `broken` flag — as
 one small JSON response.
 
 This used to live inside the site's own repo (`worker/`), importing the
-webcam list from a file there. It moved here once the Worker became the
+camera list from a file there. It moved here once the Worker became the
 *only* place the list lives at all, rather than a copy kept in sync with the
 site — see the site's `PERFORMANCE.md` for why the original client-side check
 was replaced with this in the first place.
@@ -20,7 +20,7 @@ branches, or trigger a Pages redeploy — they're fully independent.
 
 ```sh
 npx wrangler login          # if you haven't already
-npx wrangler kv namespace create WEBCAM_STATUS
+npx wrangler kv namespace create CAMERA_STATUS
 ```
 
 That prints an `id`. Paste it into `wrangler.toml`, replacing
@@ -28,7 +28,7 @@ That prints an `id`. Paste it into `wrangler.toml`, replacing
 
 ```toml
 [[kv_namespaces]]
-binding = "WEBCAM_STATUS"
+binding = "CAMERA_STATUS"
 id = "<the id printed above>"
 ```
 
@@ -47,10 +47,11 @@ npx wrangler deploy
 ```
 
 Wrangler prints the Worker's URL, something like
-`https://webcam-status.<your-subdomain>.workers.dev` (the Worker itself is
-still named `webcam-status`, from before this repo split — no need to rename
-it, and renaming would change the URL every consumer fetches). Put that URL
-into `WEBCAM_STATUS_URL` in the site repo's `js/layers/webcams/load.js`.
+`https://finestres-obertes-cameras-api.<your-subdomain>.workers.dev` (the
+Worker's name comes from `wrangler.toml`'s `name` field, which matches this
+repo's name — renaming either one changes the URL every consumer fetches, so
+keep them in sync). Put that URL into `CAMERA_STATUS_URL` in the site repo's
+`js/layers/cameras/load.js`.
 
 The Cron Trigger is defined in `wrangler.toml` and activates automatically on
 deploy — nothing else to configure. To check it's running:
@@ -59,8 +60,8 @@ deploy — nothing else to configure. To check it's running:
 npx wrangler tail          # watch live logs
 ```
 
-or check **Workers & Pages → webcam-status → Triggers** in the Cloudflare
-dashboard for the last execution time.
+or check **Workers & Pages → finestres-obertes-cameras-api → Triggers** in
+the Cloudflare dashboard for the last execution time.
 
 **The first check doesn't happen until the Cron Trigger fires** (up to an hour,
 plus up to ~15 minutes of propagation delay right after a fresh deploy) — until
@@ -72,18 +73,19 @@ sooner.
 ## Automatic deploys
 
 To have Cloudflare redeploy this Worker on every push, without any GitHub
-Actions or API tokens: **Workers & Pages → webcam-status → Settings → Builds →
-Connect**, then connect this repo. Leave **Root directory** unset (this repo's
-root *is* the Worker), set **Git branch** to whichever branch you want to
-treat as live (`main` is fine — this repo has no separate release branch the
-way the site repo uses `prod`), and leave **Deploy command** as its default,
-`npx wrangler deploy`. Your `wrangler.toml` (KV binding, Cron Trigger) and the
-`RUN_TOKEN` secret both carry over automatically; secrets are stored
-separately from deploys and code deploys don't touch them.
+Actions or API tokens: **Workers & Pages → finestres-obertes-cameras-api →
+Settings → Builds → Connect**, then connect this repo. Leave **Root
+directory** unset (this repo's root *is* the Worker), set **Git branch** to
+whichever branch you want to treat as live (`main` is fine — this repo has no
+separate release branch the way the site repo uses `prod`), and leave
+**Deploy command** as its default, `npx wrangler deploy`. Your
+`wrangler.toml` (KV binding, Cron Trigger) and the `RUN_TOKEN` secret both
+carry over automatically; secrets are stored separately from deploys and code
+deploys don't touch them.
 
-## Editing the webcam list
+## Editing the camera list
 
-Edit `webcams-data.js` directly, then redeploy (`npx wrangler deploy`, or
+Edit `cameras-data.js` directly, then redeploy (`npx wrangler deploy`, or
 just push if Workers Builds is connected). There's only one copy of the list
 anywhere — nothing else to keep in sync.
 
@@ -97,13 +99,13 @@ worth chasing further given the alternative below works reliably). Use the
 Worker's own `/run` route instead:
 
 ```sh
-curl "https://webcam-status.<your-subdomain>.workers.dev/run?token=<your RUN_TOKEN>"
+curl "https://finestres-obertes-cameras-api.<your-subdomain>.workers.dev/run?token=<your RUN_TOKEN>"
 ```
 
 That runs the same check-and-store logic the cron uses, immediately. Then:
 
 ```sh
-curl https://webcam-status.<your-subdomain>.workers.dev
+curl https://finestres-obertes-cameras-api.<your-subdomain>.workers.dev
 ```
 
 `checkedAt` should now be a real timestamp, and `cams` the full list with
