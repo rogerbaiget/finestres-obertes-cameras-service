@@ -24,13 +24,16 @@ npx wrangler d1 create finestres-obertes-cameras
 ```
 
 That prints a `database_id`. Paste it into `wrangler.toml`'s `[[d1_databases]]`
-block, then apply the schema and seed it from `cameras-data.js`:
+block, then apply the schema once, right away (CI applies it again on every
+later push, but the table needs to exist before this Worker can do anything):
 
 ```sh
 npx wrangler d1 migrations apply finestres-obertes-cameras --remote
-node scripts/seed-d1.mjs
-npx wrangler d1 execute finestres-obertes-cameras --remote --file=migrations/seed.sql
 ```
+
+A fresh database starts with zero cameras — add them as described in
+[Editing the camera list](#editing-the-camera-list) below, or restore from a
+backup (see the same section) if you're recovering an existing one.
 
 Set a secret for the manual-trigger route (any random string — this just stops
 a stranger who finds the Worker's URL from spamming checks; pick your own
@@ -72,29 +75,59 @@ broken-detection sooner.
 
 ## Automatic deploys
 
-To have Cloudflare redeploy this Worker on every push, without any GitHub
-Actions or API tokens: **Workers & Pages → finestres-obertes-cameras-service →
-Settings → Builds → Connect**, then connect this repo. Leave **Root
-directory** unset (this repo's root *is* the Worker), set **Git branch** to
-whichever branch you want to treat as live (`main` is fine — this repo has no
-separate release branch the way the site repo uses `prod`), and leave
-**Deploy command** as its default, `npx wrangler deploy`. Your
-`wrangler.toml` (D1 binding, Cron Trigger) and the `RUN_TOKEN` secret both
-carry over automatically; secrets are stored separately from deploys and code
-deploys don't touch them.
+This repo deploys via the `Deploy Worker` GitHub Actions workflow
+(`.github/workflows/deploy.yml`), which runs on every push to `main`. It
+applies any pending D1 migration (`wrangler d1 migrations apply --remote`)
+and then deploys the Worker (`wrangler deploy`), so a schema change and the
+code that depends on it land in the same push.
+
+It authenticates with two repo secrets:
+
+- `CLOUDFLARE_ACCOUNT_ID` — not sensitive, this account's ID
+- `CLOUDFLARE_API_TOKEN` — a custom token scoped to this account only, with
+  **Workers Scripts: Edit**, **D1: Edit** (needed for the migrations step,
+  not just deploy), and **Account Settings: Read**
+
+Set both with `gh secret set <NAME>` (reads the value from stdin/a prompt,
+never from a shell argument).
+
+Cloudflare's own **Workers & Pages → Settings → Builds** git integration is
+an alternative to this workflow, not a complement to it — it doesn't run the
+migrations step, so if you connect it too, every push double-deploys and
+schema changes stop landing automatically. Leave it disconnected while this
+workflow is in place.
 
 ## Editing the camera list
 
-The live camera list lives in D1, not in code — `cameras-data.js` is only the
-one-time seed source `scripts/seed-d1.mjs` read from and is no longer imported
-by `index.js`. Until an admin API exists (planned), edit a camera directly:
+The camera list lives entirely in D1 — there's no file in this repo to edit
+or redeploy from. Until an admin API exists (planned), add and edit cameras
+directly with SQL:
 
 ```sh
+# Add a camera
+npx wrangler d1 execute finestres-obertes-cameras --remote --command \
+  "INSERT INTO cameras (slug, name, location, lat, lng, media_type, public_url) \
+   VALUES ('some-slug', 'Some Place', 'Some Town', 41.123, 1.456, 'video', 'https://example.com/new.jpg');"
+
+# Edit one
 npx wrangler d1 execute finestres-obertes-cameras --remote --command \
   "UPDATE cameras SET public_url = 'https://example.com/new.jpg' WHERE slug = 'some-slug';"
 ```
 
-No redeploy needed — `GET /` reads D1 live on every request.
+`slug` must be unique — it's what the site and the proxy Worker key off of.
+No redeploy needed either way — `GET /` reads D1 live on every request.
+
+To back up the current list (or recover it if the database is ever lost or
+needs recreating):
+
+```sh
+npx wrangler d1 export finestres-obertes-cameras --remote --output backup.sql
+```
+
+That's a live snapshot of whatever's actually in D1 at that moment, not a
+static file that drifts out of date as cameras get added — restore it into a
+fresh database with `wrangler d1 execute ... --file=backup.sql` after
+applying the schema migration.
 
 ## Triggering a check on demand
 
