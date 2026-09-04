@@ -26,16 +26,57 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Job summary
         if: always()
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          MIGRATE_OUTCOME: ${{ steps.migrate.outcome }}
+          MIGRATE_OUTPUT: ${{ steps.migrate.outputs.command-output }}
+          MIGRATE_STDERR: ${{ steps.migrate.outputs.command-stderr }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          DEPLOY_STDERR: ${{ steps.deploy.outputs.command-stderr }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
           {
-            echo "### Deploy Worker — \`${{ github.sha }}\`"
+            echo "### Deploy Worker — \`${COMMIT_SHA}\`"
             echo
-            echo "- **Worker URL:** ${{ steps.deploy.outputs.deployment-url || '_deploy step did not complete_' }}"
+            if [ "$MIGRATE_OUTCOME" = "success" ] && [ "$DEPLOY_OUTCOME" = "success" ]; then
+              echo "✅ Migrations and deploy both succeeded."
+            else
+              echo "❌ migrate: \`$MIGRATE_OUTCOME\`, deploy: \`$DEPLOY_OUTCOME\`"
+            fi
             echo
+            echo "- **Worker URL:** ${DEPLOY_URL:-_deploy step did not complete_}"
+            echo
+
+            if [ -n "$MIGRATE_STDERR" ] || [ -n "$DEPLOY_STDERR" ]; then
+              echo "#### Warnings / errors"
+              echo
+              if [ -n "$MIGRATE_STDERR" ]; then
+                echo "<details><summary>Migrations stderr</summary>"
+                echo
+                echo '```'
+                echo "$MIGRATE_STDERR"
+                echo '```'
+                echo "</details>"
+                echo
+              fi
+              if [ -n "$DEPLOY_STDERR" ]; then
+                echo "<details><summary>Deploy stderr</summary>"
+                echo
+                echo '```'
+                echo "$DEPLOY_STDERR"
+                echo '```'
+                echo "</details>"
+                echo
+              fi
+            else
+              echo "No warnings or errors reported by Wrangler."
+              echo
+            fi
+
             echo "<details><summary>D1 migrations output</summary>"
             echo
             echo '```'
-            echo "${{ steps.migrate.outputs.command-output }}"
+            echo "$MIGRATE_OUTPUT"
             echo '```'
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
