@@ -12,13 +12,30 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Apply D1 migrations
-        uses: cloudflare/wrangler-action@v3
+        id: migrate
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply finestres-obertes-cameras --remote
       - name: Deploy Worker
-        uses: cloudflare/wrangler-action@v3
+        id: deploy
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy Worker — \`${{ github.sha }}\`"
+            echo
+            echo "- **Worker URL:** ${{ steps.deploy.outputs.deployment-url || '_deploy step did not complete_' }}"
+            echo
+            echo "<details><summary>D1 migrations output</summary>"
+            echo
+            echo '```'
+            echo "${{ steps.migrate.outputs.command-output }}"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
