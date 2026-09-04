@@ -2,10 +2,10 @@
 
 A Cloudflare Worker that is the canonical source of the camera list used by
 the [finestres-obertes](https://github.com/rogerbaiget/finestres-obertes) map
-(`js/layers/cameras/load.js` in that repo). It holds every camera's info
-(`cameras-data.js`), checks each one's live availability once an hour (Cron
-Trigger), and serves the enriched list — each cam plus a `broken` flag — as
-one small JSON response.
+(`js/layers/cameras/load.js` in that repo). It holds every camera's info in a
+D1 database, checks each one's live availability once an hour (Cron Trigger),
+and serves the enriched list — each cam plus a `broken` flag — as one small
+JSON response, read straight from D1 on every request.
 
 This used to live inside the site's own repo (`worker/`), importing the
 camera list from a file there. It moved here once the Worker became the
@@ -20,16 +20,16 @@ branches, or trigger a Pages redeploy — they're fully independent.
 
 ```sh
 npx wrangler login          # if you haven't already
-npx wrangler kv namespace create CAMERA_STATUS
+npx wrangler d1 create finestres-obertes-cameras
 ```
 
-That prints an `id`. Paste it into `wrangler.toml`, replacing
-`REPLACE_WITH_YOUR_KV_NAMESPACE_ID`:
+That prints a `database_id`. Paste it into `wrangler.toml`'s `[[d1_databases]]`
+block, then apply the schema and seed it from `cameras-data.js`:
 
-```toml
-[[kv_namespaces]]
-binding = "CAMERA_STATUS"
-id = "<the id printed above>"
+```sh
+npx wrangler d1 migrations apply finestres-obertes-cameras --remote
+node scripts/seed-d1.mjs
+npx wrangler d1 execute finestres-obertes-cameras --remote --file=migrations/seed.sql
 ```
 
 Set a secret for the manual-trigger route (any random string — this just stops
@@ -65,10 +65,10 @@ the Cloudflare dashboard for the last execution time.
 
 **The first check doesn't happen until the Cron Trigger fires** (up to an hour,
 plus up to ~15 minutes of propagation delay right after a fresh deploy) — until
-then, `GET /` falls back to the raw list with every cam marked fine (not an
-empty list), so the site still shows all the cams from the moment it's
-deployed. Use the manual-trigger route below to get live broken-detection
-sooner.
+then, `GET /` still returns every camera straight from D1 with `broken: false`
+(the schema's default for a never-checked row), so the site shows all the cams
+from the moment it's deployed. Use the manual-trigger route below to get live
+broken-detection sooner.
 
 ## Automatic deploys
 
@@ -79,15 +79,22 @@ directory** unset (this repo's root *is* the Worker), set **Git branch** to
 whichever branch you want to treat as live (`main` is fine — this repo has no
 separate release branch the way the site repo uses `prod`), and leave
 **Deploy command** as its default, `npx wrangler deploy`. Your
-`wrangler.toml` (KV binding, Cron Trigger) and the `RUN_TOKEN` secret both
+`wrangler.toml` (D1 binding, Cron Trigger) and the `RUN_TOKEN` secret both
 carry over automatically; secrets are stored separately from deploys and code
 deploys don't touch them.
 
 ## Editing the camera list
 
-Edit `cameras-data.js` directly, then redeploy (`npx wrangler deploy`, or
-just push if Workers Builds is connected). There's only one copy of the list
-anywhere — nothing else to keep in sync.
+The live camera list lives in D1, not in code — `cameras-data.js` is only the
+one-time seed source `scripts/seed-d1.mjs` read from and is no longer imported
+by `index.js`. Until an admin API exists (planned), edit a camera directly:
+
+```sh
+npx wrangler d1 execute finestres-obertes-cameras --remote --command \
+  "UPDATE cameras SET public_url = 'https://example.com/new.jpg' WHERE slug = 'some-slug';"
+```
+
+No redeploy needed — `GET /` reads D1 live on every request.
 
 ## Triggering a check on demand
 
@@ -114,10 +121,12 @@ live `broken` flags.
 ## Testing locally before deploying
 
 ```sh
-npx wrangler dev
+npx wrangler dev --remote
 ```
 
-Then, in another terminal:
+`--remote` matters here — without it, the D1 binding falls back to an empty
+local SQLite replica instead of the real remote database, so `GET /` would
+show zero cameras. Then, in another terminal:
 
 ```sh
 curl "http://localhost:8787/run?token=<your RUN_TOKEN>"

@@ -1,9 +1,11 @@
 // Cloudflare Worker: the canonical source of the camera list, and its live
-// availability. Checks every camera on an hourly Cron Trigger, caches the full
-// enriched list (each cam plus a `broken` flag) in Workers KV, and serves it to
-// whatever consumes it — currently the finestres-obertes map site's cameras layer
-// (js/layers/cameras/load.js in that separate repo), which fetches this Worker's
-// cached result on every page load rather than holding any camera data itself.
+// availability. Checks every camera on an hourly Cron Trigger, persists the
+// result (is_broken/last_checked_at) directly on each camera's row in D1, and
+// serves the enriched list straight from D1 to whatever consumes it —
+// currently the finestres-obertes map site's cameras layer
+// (js/layers/cameras/load.js in that separate repo), which fetches this
+// Worker's result on every page load rather than holding any camera data
+// itself.
 //
 // Runs server-side specifically because most of the photo-hosting third parties
 // (3cat.cat, meteoalmoster.net, avametnuvol.es, oratge.es, vigilant.cat, ...) send no
@@ -13,10 +15,9 @@
 // image the way the old client-side check had to.
 //
 // Deploy from this directory: `wrangler deploy`. See README.md for one-time setup
-// (KV namespace, D1 database, RUN_TOKEN secret, wrangler.toml bindings) and how to
-// trigger a check on demand.
+// (D1 database, RUN_TOKEN secret, wrangler.toml bindings) and how to trigger a
+// check on demand.
 
-const KV_KEY = 'status';
 // Shorter than the hourly cron interval on purpose — see checkAllCams().
 const PROXY_FRESHNESS_MS = 20 * 60 * 1000;
 
@@ -69,7 +70,7 @@ async function checkVideo(cam){
 // observed recently (real click traffic doubling as a liveness signal — see the
 // cameras platform architecture plan), and persists is_broken/last_checked_at/
 // checked_by plus a camera_checks history row for every camera actively probed
-// this cycle. Returns the rows with fresh in-memory state for the KV write.
+// this cycle.
 async function checkAllCams(env){
   const { results: cams } = await env.DB.prepare(
     'SELECT * FROM cameras WHERE is_active = 1'
@@ -112,17 +113,9 @@ async function checkAllCams(env){
   return cams;
 }
 
-async function runCheck(env){
-  const cams = await checkAllCams(env);
-  await env.CAMERA_STATUS.put(KV_KEY, JSON.stringify({
-    cams: cams.map(toPublicCam),
-    checkedAt: Date.now()
-  }));
-}
-
 export default {
   async scheduled(event, env, ctx){
-    ctx.waitUntil(runCheck(env));
+    ctx.waitUntil(checkAllCams(env));
   },
 
   async fetch(request, env, ctx){
@@ -136,23 +129,18 @@ export default {
       if(!env.RUN_TOKEN || url.searchParams.get('token') !== env.RUN_TOKEN){
         return new Response('Forbidden', {status: 403});
       }
-      await runCheck(env);
+      await checkAllCams(env);
       return new Response('OK — check ran, see / for the result', {status: 200});
     }
 
-    const stored = await env.CAMERA_STATUS.get(KV_KEY);
-    // Before the first scheduled run ever completes, fall back to D1's raw list with
-    // every cam marked fine, rather than an empty list — the site should show all the
-    // cams from the moment it's deployed, not wait an hour for live broken-detection
-    // to kick in.
-    let body = stored;
-    if(!body){
-      const { results } = await env.DB.prepare('SELECT * FROM cameras WHERE is_active = 1').all();
-      body = JSON.stringify({
-        cams: results.map(row => ({...toPublicCam(row), broken: false})),
-        checkedAt: null
-      });
-    }
+    // D1 already holds live current state (checkAllCams updates is_broken/
+    // last_checked_at directly), so this reads straight from it every request —
+    // no separate cache to keep in sync, and a never-checked camera's is_broken
+    // defaults to 0 in the schema, so there's no "before the first check" case
+    // to special-case either.
+    const { results } = await env.DB.prepare('SELECT * FROM cameras WHERE is_active = 1').all();
+    const checkedAt = results.reduce((max, r) => r.last_checked_at ? Math.max(max, r.last_checked_at) : max, 0) || null;
+    const body = JSON.stringify({ cams: results.map(toPublicCam), checkedAt });
     return new Response(body, {
       headers: {
         'content-type': 'application/json',
